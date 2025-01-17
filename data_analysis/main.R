@@ -168,4 +168,131 @@ stargazer(model_2sDID,
           add.lines = list(c("Observations", nobs(model_2sDID)),
                            c("R-squared", round(summary(model_2sDID)$r.squared, 3))))
 
-########
+######## Table 3: Conditional effects of economic sanctions on mass mobilization
+library(margins)
+###############################################################################
+# 2. Generate the new variables (equivalent to Stata's 'gen yearXdem = ...')
+###############################################################################
+df <- read_dta("DonganTanReplication.dta")  
+# If 'year' and 'state' are *numeric* in your dataset, you can do:
+df <- df %>%
+  mutate(
+    state = as.numeric(as.factor(country)),  # Convert to numeric IDs
+    yearXdem    = year * dem,
+    stateXdem   = state * dem,
+    yearXEcGI   = year * lowEcGI,
+    stateXEcGI  = state * lowEcGI
+  )
+
+# If 'state' is a character or factor, and you truly need numeric x dem:
+# df$stateXdem  <- as.numeric(df$state) * df$dem
+# ...and similarly for yearXEcGI/stateXEcGI if needed.
+
+###############################################################################
+# 3. Drop 'adj' if it exists (like 'drop adj')
+###############################################################################
+df$adj <- NULL
+
+###############################################################################
+# 4. First regression (mirrors Stata's:
+#    reg mm i.state i.year i.yearXdem i.stateXdem if treat == 0, nocons)
+#
+#  - '0 +' omits the intercept (nocons).
+#  - 'factor(state)' and 'factor(year)' replicate i.state, i.year in Stata
+#  - We subset rows where treat == 0
+###############################################################################
+mod1 <- lm(
+  mm ~ 0 + factor(state) + factor(year) + yearXdem + stateXdem,
+  data = df %>% filter(treat == 0)
+)
+
+###############################################################################
+# 5. Predict residuals (mirrors Stata's: predict adj, residuals)
+###############################################################################
+# Put residuals into df$adj, but only for treat==0
+df$adj <- NA
+df$adj[df$treat == 0] <- residuals(mod1)
+
+###############################################################################
+# 6. Second regression (mirrors Stata's:
+#    reg adj i.treat##i.dem EcGI lgdp interwar intrawar lcinc efindex, vce(bootstrap)
+#
+#    For exact equivalence in standard errors, you'd need to use a bootstrap
+#    approach in R. Below is a simple OLS example.
+###############################################################################
+# Convert treat, dem to factors if you prefer a true factor interaction:
+# Otherwise numeric * numeric is fine. We'll show factor approach for margins.
+df <- df %>%
+  mutate(
+    treat_factor = factor(treat, levels = c(0,1)),
+    dem_factor   = factor(dem,   levels = c(0,1))
+  )
+df_clean <- df_clean %>%
+  mutate(
+    treat_factor = droplevels(treat_factor),
+    dem_factor   = droplevels(dem_factor)
+  )
+mod2 <- lm(
+  adj ~ treat_factor * dem_factor + EcGI + lgdp + interwar + intrawar + lcinc + efindex,
+  data = df_clean
+)   ####################### <------ FAILS HERE
+### levels(df$state) to debug
+# If you need robust or bootstrap SEs:
+#   library(sandwich)
+#   library(lmtest)
+#   coeftest(mod2, vcov = vcovHC(mod2, type = "HC1"))
+
+###############################################################################
+# 7. Marginal effects (mirrors:
+#    margins, dydx(treat) at(dem=(0(1)1))
+###############################################################################
+marg_mod2 <- margins(
+  mod2,
+  variables = "treat_factor",
+  at = list(dem_factor = c("0","1"))
+)
+marg_summary <- summary(marg_mod2)
+marg_summary
+# This table shows the marginal effect of treat at dem=0 and dem=1.
+
+###############################################################################
+# 8. Margins plot (similar to 'marginsplot, ytitle(...) ...')
+#    We'll use ggplot2 to replicate some of Stata's plot features.
+###############################################################################
+# Convert summary(marg_mod2) to a data frame for plotting
+marg_df <- as.data.frame(marg_summary)
+
+# For clarity, rename factor levels to match labeling in Stata
+# e.g., "0" -> "Autocracy", "1" -> "Democracy"
+marg_df$dem_label <- ifelse(marg_df$dem_factor == "0", "Autocracy", "Democracy")
+
+# Build plot
+ggplot(marg_df, aes(x = dem_label, y = AME)) +
+  geom_point(size = 2) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.1) +
+  labs(
+    x        = "",
+    y        = "Marginal effect of sanctions imposition",
+    subtitle = "A: Unsanctioned"
+  ) +
+  ggtitle("") +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.margin = margin(20, 20, 20, 20),
+    plot.subtitle = element_text(size = 12)
+  )
+
+# If you want to save this plot (like Stata's 'saving(dem1)'):
+# ggsave("dem1.png", width = 6, height = 4, dpi = 300)
+
+###############################################################################
+# 9. "Print the first column of this table" with stargazer
+#    The user example has multiple columns, but if you only want 'mod2' shown
+###############################################################################
+stargazer(
+  mod2,
+  type  = "text",
+  title = "Regression Results: First Column",
+  # Keep minimal stats for a simpler table, adjust as desired:
+  keep.stat = c("n", "rsq")
+)
