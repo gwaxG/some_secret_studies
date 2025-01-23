@@ -1,5 +1,5 @@
 ********************************** Main Results ********************************
-use DonganTanReplication, clear
+use DonganTanRobustneReplication, clear
 /* drop if year==1949 & treat==1: Countries sanctioned in the first year of the dataset are excluded to avoid spurious results*/
 
 encode country, gen(state)

@@ -1,8 +1,10 @@
 library("tidyverse")
 library("wooldridge")
+install.packages("car")
 library(lmtest)
 library(plm)
 library(stargazer)
+library(car)
 
 data('jtrain')
 
@@ -54,17 +56,17 @@ stargazer(model_4, type = "text", title = "DID Regression Results  Model 4")
 # Step 1.1: Model Without Control Variables
 # Check the effect of grant, Post_Treatment, and DiD without controls:
 model <- model_1
-model_1_no_controls <- plm(hrsemp ~ grant + Post_Treatment + DiD,
+model_no_controls <- plm(hrsemp ~ grant + Post_Treatment + DiD,
                            data = pdata, model = "within", effect = "individual")
-summary(model_1_no_controls)
-stargazer(model_1_no_controls, type = "text", title = "Model 1 Without Controls")
+summary(model_no_controls)
+stargazer(model_no_controls, type = "text", title = "Model 1 Without Controls")
 
 # Step 1.2: Model With Additional Controls
 # If you have more variables that could influence training hours, add them:
-model_1_extra_controls <- plm(hrsemp ~ grant + Post_Treatment + DiD + lemploy + union + d88 + d89 + lsales + lavgsal,
+model_extra_controls <- plm(hrsemp ~ grant + Post_Treatment + DiD + lemploy + union + d88 + d89 + lsales + lavgsal,
                               data = pdata, model = "within", effect = "individual")
-summary(model_1_extra_controls)
-stargazer(model_1_extra_controls, type = "text", title = "Model 1 With Additional Controls")
+summary(model_extra_controls)
+stargazer(model_extra_controls, type = "text", title = "Model 1 With Additional Controls")
 
 # Compare results across models.
 # If coefficients remain stable, it suggests robust estimates.
@@ -75,7 +77,7 @@ stargazer(model_1_extra_controls, type = "text", title = "Model 1 With Additiona
 # Step 2.1: Pre-treatment Trends
 # Check if treated and control firms had similar training hours before treatment.
 # Estimate a placebo regression using only pre-treatment years (1987):
-
+  
 pre_treatment_data <- pdata %>% filter(year == 1987)
 
 placebo_model <- lm(hrsemp ~ grant + lemploy + union, data = pre_treatment_data)
@@ -87,18 +89,27 @@ stargazer(placebo_model, type = "text", title = "Placebo Test (1987 Only)")
 # III Robust Standard Errors
 # Heteroskedasticity or autocorrelation can bias standard errors. Use clustered robust standard errors:
 
-coeftest(model_1, vcovHC(model_1, type = "HC0", cluster = "group"))
+coeftest(model, vcovHC(model, type = "HC0", cluster = "group"))
 # This corrects for heteroskedasticity and within-group correlation.
 
 # IV Fixed Effects vs. Random Effects
 # To determine if fixed effects (FE) or random effects (RE) are more appropriate, run the Hausman test:
 
-model_1_fe <- plm(hrsemp ~ grant + Post_Treatment + DiD + lemploy + union + d88 + d89,
+model_fe <- plm(hrsemp ~ grant + Post_Treatment + DiD + lemploy + union + d88 + d89,
                   data = pdata, model = "within")  # Fixed Effects
+
+# Colinearity test : This test fails and should be fixed.
+# Since Post_Treatment and DiD are fully explained by grant, you should remove at least one (or both) of these variables from the model:
+
+vif_results <- car::vif(lm(hrsemp ~ grant + Post_Treatment + DiD + lemploy + union, data = pdata))
+print(vif_results)
+
+model_re <- plm(hrsemp ~ Post_Treatment + DiD + lemploy + union,
+                data = pdata, model = "random")  # Random Effects
 
 # F-Test for Fixed Effects
 # If you suspect firm-specific effects, an F-test can determine whether Fixed Effects (FE) are needed.
-pFtest(model_1_fe, plm(hrsemp ~ grant + Post_Treatment + DiD + lemploy + union + d88 + d89,
+pFtest(model_fe, plm(hrsemp ~ grant + Post_Treatment + DiD + lemploy + union + d88 + d89,
                        data = pdata, model = "pooling"))  # Compare FE vs OLS
 # P-value < 0.05 → Use Fixed Effects (FE) (Firm effects are significant).
 # P-value > 0.05 → OLS might be sufficient.

@@ -13,6 +13,7 @@ library(stargazer)
 
 # Stata: use DonganTanReplication, clear
 data <- read_dta("DonganTanReplication.dta")  
+summary(data)
 # TABLE 1, just data summary, we skip.
 # Stata: drop if year==1949 & treat==1
 data <- data %>% 
