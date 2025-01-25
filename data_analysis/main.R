@@ -29,6 +29,7 @@ data <- pdata.frame(data, index = c("state", "year"))
 
 # Stata: global controls polity EcGI lgdp interwar intrawar lcinc efindex
 controls <- c("polity", "EcGI", "lgdp", "interwar", "intrawar", "lcinc", "efindex")
+
 controls_formula <- paste(controls, collapse = " + ")
 
 # Stata: xtreg mm i.treat i.year $controls, fe vce(cluster state)
